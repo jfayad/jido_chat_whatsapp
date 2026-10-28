@@ -55,7 +55,12 @@ defmodule Jido.Chat.WhatsApp.Transport.AmarulaClient do
   end
 
   @impl true
-  def user_phone(conn, jid) when is_binary(jid) do
+  def user_phone(conn, jid) do
+    with {:ok, profile} <- user_profile(conn, jid), do: {:ok, profile.phone}
+  end
+
+  @impl true
+  def user_profile(conn, jid) when is_binary(jid) do
     case Message.normalize_jids([jid]) do
       [normalized] ->
         address =
@@ -64,7 +69,19 @@ defmodule Jido.Chat.WhatsApp.Transport.AmarulaClient do
             else: normalized
 
         pn = if is_struct(address, Amarula.Address), do: Amarula.Address.to_jid!(address), else: address
-        {:ok, phone_from_jid(pn)}
+
+        aliases =
+          if String.ends_with?(normalized, "@lid") do
+            pn
+            |> Message.normalize_jids()
+            |> Enum.filter(&Regex.match?(~r/\A[0-9]+@s\.whatsapp\.net\z/, &1))
+            |> Enum.reject(&(&1 == normalized))
+          else
+            []
+          end
+
+        profile = %{phone: phone_from_jid(pn)}
+        {:ok, if(aliases == [], do: profile, else: Map.put(profile, :additional_identifiers, aliases))}
 
       _ ->
         {:error, :invalid_user}
@@ -75,7 +92,7 @@ defmodule Jido.Chat.WhatsApp.Transport.AmarulaClient do
     :exit, _ -> {:error, :unavailable}
   end
 
-  def user_phone(_, _), do: {:error, :invalid_user}
+  def user_profile(_, _), do: {:error, :invalid_user}
 
   @impl true
   def canonical_user_id(conn, jid) when is_binary(jid) do

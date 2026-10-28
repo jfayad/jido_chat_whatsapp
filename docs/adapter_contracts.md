@@ -106,6 +106,17 @@ display-name fields. Blank and `~` placeholders become `nil`; push names never
 establish external user identity. Phone enrichment remains connection-scoped
 through `Adapter.get_user/2`.
 
+User profiles preserve the supplied `id` and existing `metadata.phone` result.
+Optional `metadata.additional_identifiers` contains verified, normalized alternate
+account JID strings for that same account. The primary identifier (including its
+device-qualified equivalent), duplicates, and malformed aliases are excluded;
+the key is omitted when no aliases are available. Amarula enriches a LID with its
+PN JID using only the originating connection's cached mapping, without network
+discovery or inference from phone values. PN input does not add a redundant alias.
+Optional `Transport.user_profile/2` returns this enrichment; transports providing
+only `user_phone/2` retain their existing behavior. Transports are responsible for
+verifying alias ownership. Hosts own identity persistence and conflict handling.
+
 Before emitting messages or reactions, the linked-device listener calls optional
 `Transport.canonical_user_id/2` for the sender. Amarula resolves a PN to its LID
 using only the originating connection's stored mapping. An existing LID is kept;

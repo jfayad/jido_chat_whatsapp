@@ -295,10 +295,30 @@ defmodule Jido.Chat.WhatsApp.Adapter do
     client = transport(opts)
 
     with true <-
-           (Code.ensure_loaded?(client) and function_exported?(client, :user_phone, 2)) || {:error, :unsupported},
+           (Code.ensure_loaded?(client) and
+              (function_exported?(client, :user_profile, 2) or function_exported?(client, :user_phone, 2))) ||
+             {:error, :unsupported},
          {:ok, conn} <- client.resolve_conn(SendOptions.conn_opts(opts)),
-         {:ok, phone} <- client.user_phone(conn, jid) do
-      {:ok, UserInfo.new(%{id: jid, metadata: %{phone: phone}})}
+         {:ok, metadata} <- user_profile(client, conn, jid) do
+      {:ok, UserInfo.new(%{id: jid, metadata: metadata})}
+    end
+  end
+
+  defp user_profile(client, conn, jid) do
+    if function_exported?(client, :user_profile, 2) do
+      with {:ok, profile} <- client.user_profile(conn, jid) do
+        aliases =
+          profile
+          |> Map.get(:additional_identifiers, [])
+          |> Message.normalize_jids()
+          |> Enum.filter(&Regex.match?(~r/\A[0-9]+@(s\.whatsapp\.net|lid)\z/, &1))
+          |> Enum.reject(&(&1 in Message.normalize_jids([jid])))
+
+        metadata = %{phone: profile.phone}
+        {:ok, if(aliases == [], do: metadata, else: Map.put(metadata, :additional_identifiers, aliases))}
+      end
+    else
+      with {:ok, phone} <- client.user_phone(conn, jid), do: {:ok, %{phone: phone}}
     end
   end
 
